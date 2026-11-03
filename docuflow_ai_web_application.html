@@ -1,0 +1,1898 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DocuFlow AI — Trích xuất hóa đơn & tài liệu sang Excel</title>
+<meta name="description" content="Chuyển ảnh và PDF hóa đơn thành dữ liệu Excel có cấu trúc và tùy chỉnh trực quan." />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: ['class', '[data-theme="dark"]'],
+    theme: {
+      extend: {
+        colors: {
+          brand: '#2F5BFF',
+          brandHover: '#2450EC',
+          ink: 'var(--ink)',
+          bgBase: 'var(--bg)',
+          surface: 'var(--surface)',
+          surface2: 'var(--surface-2)',
+          line: 'var(--line)',
+          mute: 'var(--mute)',
+          feature: 'var(--feature)',
+        },
+        fontFamily: {
+          sans: ['"Be Vietnam Pro"', 'Inter', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        }
+      }
+    }
+  }
+</script>
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<link rel="icon" type="image/png" href="/assets/img/favicon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: 246 241 231;
+    --surface: 255 253 249;
+    --surface-2: 236 229 215;
+    --ink: 11 27 58;
+    --mute: 74 88 115;
+    --line: 11 27 58;
+    --brand: 47 91 255;
+    --feature: 11 27 58;
+    --shadow: 11 27 58;
+  }
+  :root[data-theme="dark"] {
+    --bg: 11 27 58;
+    --surface: 18 38 78;
+    --surface-2: 15 33 70;
+    --ink: 246 241 231;
+    --mute: 178 188 208;
+    --line: 246 241 231;
+    --brand: 47 91 255;
+    --feature: 47 91 255;
+    --shadow: 2 8 24;
+  }
+  body {
+    background-color: rgb(var(--bg));
+    color: rgb(var(--ink));
+    font-family: 'Be Vietnam Pro', sans-serif;
+  }
+  .dots-pattern {
+    background-image: radial-gradient(rgba(var(--line), 0.14) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .scan-bar {
+    animation: scanLine 3s ease-in-out infinite;
+  }
+  @keyframes scanLine {
+    0%, 100% { top: 4%; opacity: 0; }
+    15% { opacity: 0.9; }
+    85% { opacity: 0.9; }
+    96% { top: 94%; opacity: 0; }
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.2rem 0.6rem;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .chip.ok { background-color: rgba(16, 185, 129, 0.15); color: #059669; }
+  .chip.warn { background-color: rgba(245, 158, 11, 0.15); color: #D97706; }
+  .field-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(var(--line), 0.15);
+    background: rgb(var(--surface));
+    padding: 0.65rem 1rem;
+    font-size: 14px;
+    color: rgb(var(--ink));
+    transition: all 0.2s;
+  }
+  .field-input:focus {
+    outline: none;
+    border-color: #2F5BFF;
+    box-shadow: 0 0 0 3px rgba(47, 91, 255, 0.18);
+  }
+  .inv-box.hl {
+    background-color: rgba(47, 91, 255, 0.15);
+    outline: 2px solid #2F5BFF;
+  }
+  .qr-code {
+    width: 130px;
+    height: 130px;
+    background-image: repeating-linear-gradient(0deg, #0B1B3A, #0B1B3A 5px, #fff 5px, #fff 10px),
+                      repeating-linear-gradient(90deg, #0B1B3A, #0B1B3A 5px, #fff 5px, #fff 10px);
+    background-blend-mode: difference;
+  }
+</style>
+<script src="/assets/js/xlsx.full.min.js"></script>
+<script>
+  if (typeof XLSX === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+  }
+</script>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-blue-500/20">
+
+<!-- SVG Icons -->
+<svg class="hidden">
+  <defs>
+    <symbol id="i-sheet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3m5 5-5-5-5 5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M8 16H3v5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-7-7 7 7-7 7"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  </defs>
+</svg>
+
+<!-- Header -->
+<header class="sticky top-0 z-40 border-b border-line/10 bg-bgBase/80 backdrop-blur-md transition-colors">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+    <!-- Brand -->
+    <a href="index.html" class="flex items-center gap-2 py-1" aria-label="DocuFlow AI">
+  <img src="/assets/img/logo.png" alt="DocuFlow AI" class="h-9 sm:h-10 w-auto object-contain dark:hidden" />
+  <img src="/assets/img/logo-dark.png" alt="DocuFlow AI" class="h-9 sm:h-10 w-auto object-contain hidden dark:block" />
+</a>
+
+    <!-- Nav Items -->
+    <nav class="hidden md:flex items-center gap-1">
+      <button class="nav-tab px-3.5 py-1.5 rounded-full text-sm font-semibold transition bg-ink text-bgBase" data-section="sec-workspace">Nền tảng & Workspace</button>
+      <button class="nav-tab px-3.5 py-1.5 rounded-full text-sm font-medium text-mute hover:text-ink transition" data-section="sec-process">Quy trình 5 bước</button>
+      <button class="nav-tab px-3.5 py-1.5 rounded-full text-sm font-medium text-mute hover:text-ink transition" data-section="sec-pricing">Gói dịch vụ & Credit</button>
+      <button class="nav-tab px-3.5 py-1.5 rounded-full text-sm font-medium text-mute hover:text-ink transition" data-section="sec-faq">Hỏi đáp (FAQ)</button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="flex items-center gap-2.5">
+      <!-- Theme switch -->
+      <button id="themeToggleBtn" type="button" class="grid h-9 w-9 place-items-center rounded-full border border-line/15 text-ink hover:bg-line/5 transition" title="Đổi giao diện Sáng / Tối">
+        <svg class="h-4 w-4 block dark:hidden"><use href="#i-moon"/></svg>
+        <svg class="h-4 w-4 hidden dark:block text-yellow-400"><use href="#i-sun"/></svg>
+      </button>
+
+      <!-- Credit Badge -->
+      <div class="flex items-center gap-1.5 rounded-full border border-line/15 bg-surface px-3 py-1 text-xs font-mono font-semibold" title="Số credit khả dụng">
+        <svg class="h-3.5 w-3.5 text-brand"><use href="#i-zap"/></svg>
+        <span id="creditBalance">20</span> <span class="text-mute font-sans">credits</span>
+      </div>
+
+      <!-- Auth Button -->
+      <button id="authBtn" class="flex items-center gap-1.5 rounded-full border border-line/20 px-3.5 py-1.5 text-xs font-semibold hover:bg-line/5 transition">
+        <svg class="h-3.5 w-3.5"><use href="#i-user"/></svg>
+        <span id="authBtnText">Đăng nhập</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Main Sections Container -->
+<main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-12">
+
+  <!-- ================= SECTION 1: WORKSPACE TƯƠNG TÁC (CORE) ================= -->
+  <section id="sec-workspace" class="space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <span class="inline-flex items-center gap-2 rounded-full border border-line/15 bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-mute">
+          <span class="h-2 w-2 rounded-full bg-brand animate-pulse"></span>
+          Bàn làm việc thông minh / Trích xuất hóa đơn
+        </span>
+        <h1 class="text-2xl font-bold tracking-tight mt-1.5">Tự động hóa bóc tách &amp; Nhập bảng Excel</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btnNewSession" type="button" class="inline-flex items-center gap-1.5 rounded-full border border-line/15 px-3.5 py-1.5 text-xs font-semibold hover:bg-line/5 transition" title="Khởi tạo lại danh sách mẫu">
+          <svg class="h-3.5 w-3.5"><use href="#i-refresh"/></svg>Phiên mới
+        </button>
+        <button id="btnHeaderExport" type="button" class="inline-flex items-center gap-1.5 rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-white hover:bg-brandHover shadow-sm transition">
+          <svg class="h-3.5 w-3.5"><use href="#i-download"/></svg>Xuất Excel (.xlsx)
+        </button>
+      </div>
+    </div>
+
+    <!-- Workspace 3 columns - Bố cục rõ nét, tương phản cao, phân chia rành mạch -->
+    <div class="rounded-3xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl overflow-hidden">
+      <!-- Workspace Status Bar -->
+      <div class="flex items-center justify-between gap-3 border-b-2 border-slate-200 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-950 px-5 py-3 text-xs font-semibold">
+        <div class="flex items-center gap-2 text-slate-800 dark:text-slate-200">
+          <span class="h-2.5 w-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+          <span>Bàn làm việc AI</span>
+          <span class="text-slate-400 font-normal">/</span>
+          <span class="text-slate-600 dark:text-slate-400 font-medium">Bóc tách &amp; Đối chiếu hóa đơn song song</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider border border-emerald-300 dark:border-emerald-700">Hệ thống sẵn sàng</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-[270px_1.15fr_1.45fr] divide-y-2 lg:divide-y-0 lg:divide-x-2 divide-slate-200 dark:divide-slate-800">
+        
+        <!-- CỘT 1: Danh sách tài liệu & Tải lên -->
+        <div class="p-4 bg-slate-50 dark:bg-slate-950 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+              <span id="docCountLabel" class="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">CỘT 1: TÀI LIỆU / 04</span>
+              <span class="text-[11px] font-semibold text-blue-600 dark:text-blue-400">Đã nhận diện</span>
+            </div>
+
+            <!-- Documents Queue -->
+            <div id="docsList" class="mt-3 space-y-2 max-h-[380px] overflow-y-auto pr-1"></div>
+
+            <!-- Add document button -->
+            <input type="file" id="fileUploadInput" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden" />
+            <button id="btnAddFiles" type="button" class="mt-3 w-full py-2.5 px-3 border-2 border-dashed border-blue-400 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50/60 dark:bg-blue-950/20 hover:border-blue-600 hover:bg-blue-100/60 transition shadow-xs">
+              <svg class="h-4 w-4"><use href="#i-upload"/></svg>
+              Tải thêm ảnh / PDF
+            </button>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 text-[11.5px] text-slate-600 dark:text-slate-400 flex items-center justify-between font-medium">
+            <span>Chi phí: <b class="text-slate-900 dark:text-white">1 credit</b> / trang</span>
+            <span class="rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 text-[10.5px] font-bold">99.2% Độ chính xác</span>
+          </div>
+        </div>
+
+        <!-- CỘT 2: Nguồn tài liệu gốc (Document Viewer) -->
+        <div class="p-4 sm:p-5 relative bg-slate-100/70 dark:bg-slate-900/50 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">CỘT 2: TÀI LIỆU GỐC</span>
+                <span id="docBadgeFormat" class="rounded-md bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-2.5 py-0.5 text-[11px] font-bold font-mono">PDF • 1 trang</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button type="button" id="btnAppZoomOut" class="h-7 w-7 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 grid place-items-center text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 text-xs font-bold shadow-xs" title="Thu nhỏ">-</button>
+                <span id="appZoomLevel" class="text-[11px] font-mono text-slate-700 dark:text-slate-300 px-1 font-bold">100%</span>
+                <button type="button" id="btnAppZoomIn" class="h-7 w-7 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 grid place-items-center text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 text-xs font-bold shadow-xs" title="Phóng to">+</button>
+                <button type="button" id="btnAppOpenTab" class="h-7 w-7 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 grid place-items-center text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 text-xs font-bold shadow-xs" title="Mở file gốc">↗</button>
+              </div>
+            </div>
+
+            <!-- Khung hiển thị file PDF hoặc Ảnh thực tế với viền nổi bật -->
+            <div id="appDocViewerBox" class="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-950 p-2 min-h-[460px] max-h-[560px] overflow-auto flex items-center justify-center border-2 border-slate-300 dark:border-slate-700 shadow-md">
+              <div id="appScanBar" class="scan-bar absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-600 to-transparent shadow-[0_0_12px_#2F5BFF] pointer-events-none hidden"></div>
+              
+              <!-- Hiển thị ảnh thật -->
+              <img id="appRealImgPreview" src="" alt="Hóa đơn gốc" class="max-h-[520px] w-auto max-w-full object-contain rounded-xl shadow-md transition-transform duration-200 hidden" />
+              
+              <!-- Hiển thị PDF thật -->
+              <iframe id="appRealPdfPreview" src="" class="w-full h-full min-h-[500px] rounded-xl border-0 bg-white hidden"></iframe>
+
+              <!-- Hiển thị hóa đơn điện tử chân thực (khi chưa có file tải lên) -->
+              <div id="appMockInvoiceContainer" class="w-full h-full min-h-[460px] overflow-y-auto"></div>
+            </div>
+          </div>
+          <p class="text-[11.5px] text-slate-600 dark:text-slate-400 text-center mt-2.5 font-medium flex items-center justify-center gap-1">
+            <svg class="h-3.5 w-3.5 text-blue-600 flex-shrink-0"><use href="#i-check"/></svg>
+            Hiển thị trực tiếp nội dung hóa đơn PDF hoặc ảnh chụp để đối chiếu song song.
+          </p>
+        </div>
+
+        <!-- CỘT 3: KHUNG EXCEL BÓC TÁCH MẪU ĐỘNG (Live Excel Grid) -->
+        <div class="p-4 sm:p-5 flex flex-col justify-between bg-white dark:bg-slate-900">
+          <div>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">CỘT 3: KHUNG EXCEL BÓC TÁCH</span>
+                <span class="rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider border border-emerald-300 dark:border-emerald-700">Live Grid</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btnQuickEditModal" type="button" class="px-3 py-1.5 rounded-full border border-slate-300 dark:border-slate-700 hover:border-slate-400 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold hover:bg-slate-100 transition flex items-center gap-1 shadow-xs">
+                  <svg class="h-3.5 w-3.5 text-slate-600"><use href="#i-pencil"/></svg>Chỉnh sửa
+                </button>
+                <button id="btnDirectExportExcel" type="button" class="inline-flex items-center gap-1.5 rounded-full bg-[#107C41] hover:bg-[#0E6B37] px-3.5 py-1.5 text-xs font-bold text-white transition shadow-sm">
+                  <svg class="h-3.5 w-3.5"><use href="#i-download"/></svg>Xuất .xlsx
+                </button>
+              </div>
+            </div>
+
+            <!-- Excel Component Container chuẩn Office -->
+            <div class="rounded-2xl border-2 border-slate-300 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-md">
+              <!-- Excel Green Title Bar -->
+              <div class="bg-[#107C41] text-white px-3.5 py-2.5 flex items-center justify-between text-xs font-bold shadow-xs">
+                <div class="flex items-center gap-2">
+                  <svg class="h-4 w-4 fill-white" viewBox="0 0 24 24"><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2m-9 14-2.5-4.5L7 17H5l3.5-5.5L5.2 6h2.2l2.1 4.2L12 6h2l-3.3 5.4L14 17h-2"/></svg>
+                  <b id="appExcelTitle" class="font-mono text-xs truncate max-w-[220px]">Accounts_Payable.xlsx</b>
+                </div>
+                <span class="text-[10px] bg-white/20 px-2.5 py-0.5 rounded font-mono font-bold tracking-wide">BẢNG TÍNH TỰ ĐỘNG</span>
+              </div>
+
+              <!-- Excel Formula Bar fx -->
+              <div class="bg-slate-100 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-700 px-3 py-2 flex items-center gap-2.5 text-xs font-mono">
+                <div id="appActiveCell" class="bg-white dark:bg-slate-900 px-2.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 font-bold text-center w-12 text-slate-900 dark:text-white shadow-xs">B2</div>
+                <span class="font-serif italic font-extrabold text-slate-500 text-sm">fx</span>
+                <input id="appFormulaInput" class="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1 text-xs font-mono text-slate-900 dark:text-white outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 shadow-xs" value="" placeholder="Giá trị hoặc công thức ô..." />
+              </div>
+
+              <!-- Dynamic Excel Cells Table với độ tương phản cao -->
+              <div class="overflow-x-auto max-h-[360px] overflow-y-auto">
+                <table id="appExcelGridTable" class="w-full border-collapse font-mono text-xs text-slate-900 dark:text-slate-100 select-none">
+                  <!-- Generated dynamically in JavaScript -->
+                </table>
+              </div>
+
+              <!-- Sheet Bar -->
+              <div class="bg-slate-100 dark:bg-slate-800 border-t border-slate-300 dark:border-slate-700 px-3.5 py-1.5 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 font-medium">
+                <div class="flex items-center gap-1.5">
+                  <span class="px-3 py-1 rounded bg-white dark:bg-slate-900 border-t-2 border-emerald-600 text-slate-900 dark:text-white font-bold flex items-center gap-1 shadow-xs">
+                    📄 Chi tiết hóa đơn
+                  </span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="cursor-pointer px-2.5 py-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 transition">
+                    Mẫu .xlsx riêng
+                    <input type="file" id="customTemplateInput" accept=".xlsx,.xls,.csv" class="hidden" />
+                  </label>
+                  <button id="btnResetTemplate" type="button" class="text-[10.5px] text-slate-500 hover:text-slate-800 dark:hover:text-white">Mặc định</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Summary Actions -->
+          <div class="mt-4 pt-3.5 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+              <span id="reviewStatusText">Đã chuẩn hóa &amp; sẵn sàng kết xuất Excel</span>
+            </div>
+            <button id="btnExportPrimary" type="button" class="inline-flex items-center gap-2 rounded-full bg-[#107C41] hover:bg-[#0E6B37] px-5 py-2.5 text-xs font-bold text-white shadow-md hover:shadow-lg transition">
+              <svg class="h-4 w-4"><use href="#i-download"/></svg>Xuất file Excel (.xlsx) ngay
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SECTION 2: QUY TRÌNH 5 BƯỚC & ĐỐI CHIẾU SONG SONG ================= -->
+  <section id="sec-process" class="space-y-8 pt-6">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div class="max-w-2xl">
+        <span class="inline-flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+          Quy trình bóc tách chuẩn
+        </span>
+        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2 text-slate-900 dark:text-white">Quy trình 5 bước. <span class="text-blue-600">Một luồng xử lý liền mạch.</span></h2>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mt-1 font-medium">Từ hóa đơn giấy hoặc PDF rời rạc, AI tự động xử lý và bạn giữ quyền kiểm tra, quyết định trước khi xuất báo cáo Excel.</p>
+      </div>
+      <a href="cach-thuc-hoat-dong.html" class="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 underline underline-offset-4">
+        Xem hướng dẫn chi tiết &rarr;
+      </a>
+    </div>
+
+    <!-- 5 Bước Trực quan có Thẻ & Icon -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+      
+      <!-- Bước 1 -->
+      <div class="rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm hover:border-blue-500 transition">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="h-7 w-7 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 grid place-items-center font-mono font-bold text-xs border border-blue-200 dark:border-blue-800">01</span>
+          <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">Đầu vào</span>
+        </div>
+        <h4 class="font-bold text-sm text-slate-900 dark:text-white">Tải hóa đơn lên</h4>
+        <p class="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+          Kéo thả tệp PDF, ảnh chụp JPG/PNG. Hỗ trợ bóc tách hàng loạt cùng lúc.
+        </p>
+      </div>
+
+      <!-- Bước 2 -->
+      <div class="rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm hover:border-blue-500 transition">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 grid place-items-center font-mono font-bold text-xs border border-purple-200 dark:border-purple-800">02</span>
+          <span class="text-[10px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-full">AI Gemini</span>
+        </div>
+        <h4 class="font-bold text-sm text-slate-900 dark:text-white">AI trích xuất tự động</h4>
+        <p class="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+          Nhận diện Nhà cung cấp, MST, Số HĐ, Ngày lập, bảng kê hàng và thuế VAT.
+        </p>
+      </div>
+
+      <!-- Bước 3 -->
+      <div class="rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm hover:border-blue-500 transition">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="h-7 w-7 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 grid place-items-center font-mono font-bold text-xs border border-amber-200 dark:border-amber-800">03</span>
+          <span class="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full">Mẫu riêng</span>
+        </div>
+        <h4 class="font-bold text-sm text-slate-900 dark:text-white">Ánh xạ vào mẫu Excel</h4>
+        <p class="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+          Đổ dữ liệu vào đúng cấu trúc cột trong workbook mẫu của doanh nghiệp bạn.
+        </p>
+      </div>
+
+      <!-- Bước 4 (Active/Highlight) -->
+      <div class="rounded-2xl border-2 border-blue-600 bg-blue-50/40 dark:bg-blue-950/30 p-4 shadow-md ring-2 ring-blue-500/20">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="h-7 w-7 rounded-lg bg-blue-600 text-white grid place-items-center font-mono font-bold text-xs">04</span>
+          <span class="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded-full">Đang rà soát</span>
+        </div>
+        <h4 class="font-bold text-sm text-slate-900 dark:text-white">Đối chiếu song song</h4>
+        <p class="text-[11.5px] text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+          Màn hình 50:50. Tô sáng ô nghi ngờ (chữ viết tay/mờ) để kế toán duyệt.
+        </p>
+      </div>
+
+      <!-- Bước 5 -->
+      <div class="rounded-2xl border-2 border-emerald-600 bg-white dark:bg-slate-900 p-4 shadow-sm hover:border-emerald-700 transition">
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="h-7 w-7 rounded-lg bg-emerald-600 text-white grid place-items-center font-mono font-bold text-xs">05</span>
+          <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">Kết xuất</span>
+        </div>
+        <h4 class="font-bold text-sm text-slate-900 dark:text-white">Xuất file Excel (.xlsx)</h4>
+        <p class="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+          Tải file .xlsx chuẩn UTF-8, giữ nguyên số 0 MST và công thức SUM tự động.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Chi tiết Bước 04: Workbench Đối chiếu song song 50:50 -->
+    <div class="rounded-3xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-md space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div>
+          <span class="text-[11px] font-bold uppercase tracking-wider text-blue-600">Thao tác Bước 04: Human-In-The-Loop</span>
+          <h3 class="text-base font-bold text-slate-900 dark:text-white mt-0.5" id="auditDocTitle">Đối chiếu: Invoice_084.pdf</h3>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="auditBadge" class="rounded-md bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-2.5 py-1 text-xs font-bold border border-amber-300">1 trường cần rà soát</span>
+          <span id="auditPercent" class="text-xs font-semibold text-slate-600 dark:text-slate-400">86% Đã xác nhận</span>
+          <button id="btnConfirmAllAudit" type="button" class="rounded-full bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-bold text-white transition shadow-sm">
+            Xác nhận tất cả
+          </button>
+        </div>
+      </div>
+
+    <!-- Review Workbench Card -->
+    <div class="rounded-3xl border border-line/10 bg-surface p-5 sm:p-6 shadow-sm space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-line/10">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-sm" id="auditDocTitle">Đối chiếu: Invoice_084.pdf</span>
+          <span id="auditBadge" class="chip warn">1 trường cần rà soát</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="auditPercent" class="text-xs font-semibold text-mute">86% Đã xác nhận</span>
+          <button id="btnConfirmAllAudit" type="button" class="rounded-full bg-emerald-600 px-3.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700 transition">
+            Xác nhận tất cả
+          </button>
+        </div>
+      </div>
+
+      <!-- Parallel form fields -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3" id="auditFieldsGrid">
+        <!-- Rendered by JS -->
+      </div>
+
+      <div id="auditAlertBox" class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-start gap-2.5 text-amber-800 dark:text-amber-200">
+        <svg class="h-4 w-4 flex-none mt-0.5 text-amber-600"><use href="#i-alert"/></svg>
+        <span><b>Cảnh báo ô nghi ngờ:</b> Trường <u>Tiền thuế</u> có nét in mờ hoặc chữ số không đồng nhất. Hãy kiểm tra giá trị và sửa lại nếu cần.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SECTION 3: BẢNG GIÁ & HỆ THỐNG CREDIT ================= -->
+  <section id="sec-pricing" class="space-y-6 pt-4">
+    <div class="text-center max-w-xl mx-auto">
+      <span class="inline-flex items-center gap-2 rounded-full border border-line/15 bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-mute">
+        Bảng giá minh bạch
+      </span>
+      <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight mt-2">Chọn gói phù hợp với lượng hóa đơn</h2>
+      <p class="text-sm text-mute mt-1">1 trang tài liệu trích xuất thành công = 1 credit. Lỗi hệ thống không trừ credit.</p>
+
+      <!-- Toggle Bill Cycle -->
+      <div class="mt-5 inline-flex rounded-full border border-line/15 bg-surface p-1 text-xs font-semibold">
+        <button id="btnCycleMonth" class="px-4 py-1.5 rounded-full bg-ink text-bgBase transition">Theo tháng</button>
+        <button id="btnCycleYear" class="px-4 py-1.5 rounded-full text-mute hover:text-ink transition flex items-center gap-1.5">
+          Theo năm <span class="bg-emerald-500/20 text-emerald-600 px-1.5 py-0.5 rounded-full text-[10px]">-2 tháng</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pricing Cards Grid - Rõ nét, tương phản cao, không bị mờ -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+      <!-- Starter -->
+      <div class="rounded-3xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 flex flex-col justify-between shadow-md hover:shadow-lg transition">
+        <div>
+          <span class="rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 font-bold text-[10px] px-2.5 py-0.5 uppercase tracking-wider inline-block">Cá nhân & SME</span>
+          <h3 class="font-bold text-xl text-slate-900 dark:text-white mt-2">Khởi đầu</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">SME có lượng hóa đơn ít</p>
+          <div class="mt-4 flex items-baseline gap-1.5">
+            <span class="text-3xl font-extrabold font-mono text-slate-900 dark:text-white" id="priceStarter">249.000</span>
+            <span class="text-xs font-bold text-slate-500">đ / tháng</span>
+          </div>
+          <div class="mt-4 py-2 px-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 font-mono text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-blue-600"></span>200 credit / tháng
+          </div>
+          <ul class="mt-5 space-y-3 text-xs text-slate-700 dark:text-slate-300 font-medium">
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>1 Mẫu bảng tính tùy chỉnh</li>
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Xuất định dạng .xlsx / .csv</li>
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Hỗ trợ kỹ thuật tiêu chuẩn</li>
+          </ul>
+        </div>
+        <button class="btn-select-plan mt-6 w-full py-2.5 rounded-full border border-slate-300 hover:border-slate-400 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-white hover:bg-slate-100 transition shadow-sm" data-plan="Khởi đầu">Chọn gói Khởi đầu</button>
+      </div>
+
+      <!-- Business (Popular) - Nổi bật, chữ đậm rõ ràng, không mờ -->
+      <div class="rounded-3xl border-2 border-blue-600 bg-white dark:bg-slate-900 p-6 flex flex-col justify-between shadow-xl relative overflow-hidden ring-4 ring-blue-500/15">
+        <div class="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-blue-500/10 blur-2xl pointer-events-none"></div>
+        <div>
+          <div class="flex items-center justify-between">
+            <span class="rounded-full bg-blue-600 text-white font-bold text-[10.5px] px-3 py-1 uppercase tracking-wider shadow-sm">PHỔ BIẾN NHẤT</span>
+            <span class="text-[11px] font-bold text-blue-600">Khuyên dùng ★</span>
+          </div>
+          <h3 class="font-extrabold text-2xl text-slate-900 dark:text-white mt-2">Doanh nghiệp</h3>
+          <p class="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">SME có hóa đơn và phiếu chi thường xuyên</p>
+          <div class="mt-4 flex items-baseline gap-1.5">
+            <span class="text-4xl font-extrabold font-mono text-blue-600" id="priceBusiness">449.000</span>
+            <span class="text-xs font-bold text-slate-500">đ / tháng</span>
+          </div>
+          <div class="mt-4 py-2.5 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 font-mono text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center justify-between shadow-xs">
+            <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>500 credit / tháng</span>
+            <span class="text-[10px] text-amber-800 dark:text-amber-300 font-sans">Tiết kiệm 30%</span>
+          </div>
+          <ul class="mt-5 space-y-3 text-xs text-slate-800 dark:text-slate-200 font-semibold">
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Tối đa 5 mẫu Excel doanh nghiệp</li>
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Ưu tiên xử lý hàng đợi AI tốc độ cao</li>
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Hỗ trợ cấu hình ánh xạ cột riêng theo mẫu kế toán</li>
+            <li class="flex items-center gap-2.5"><svg class="h-4 w-4 text-emerald-600 flex-shrink-0"><use href="#i-check"/></svg>Xuất file Excel (.xlsx) chuẩn công thức tự động</li>
+          </ul>
+        </div>
+        <button class="btn-select-plan mt-6 w-full py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition shadow-md hover:shadow-lg" data-plan="Doanh nghiệp">Chọn gói Doanh nghiệp</button>
+      </div>
+
+      <!-- Add-on Topup / QR Pay -->
+      <div class="rounded-3xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 flex flex-col justify-between shadow-md hover:shadow-lg transition">
+        <div>
+          <span class="rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-bold text-[10px] px-2.5 py-0.5 uppercase tracking-wider inline-block">MUA THÊM DÙNG NGAY</span>
+          <h3 class="font-bold text-xl text-slate-900 dark:text-white mt-2">Gói nạp Credit (+100)</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">Dành cho nhu cầu đột xuất cuối tháng</p>
+          <div class="mt-4 flex items-baseline gap-1.5">
+            <span class="text-3xl font-extrabold font-mono text-blue-600">99.000</span>
+            <span class="text-xs font-bold text-slate-500">đ / lượt</span>
+          </div>
+          <div class="mt-4 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>Hạn dùng 90 ngày
+          </div>
+          <p class="mt-4 text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+            Thanh toán tức thời qua mã VietQR. Credit sẽ được tự động cộng vào tài khoản sau 3 giây.
+          </p>
+        </div>
+        <button id="btnOpenQrModal" class="mt-6 w-full py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-bold transition shadow-sm">
+          Quét QR nạp ngay (+100)
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SECTION 4: HỎI ĐÁP FAQ ================= -->
+  <section id="sec-faq" class="space-y-6 pt-4 pb-10">
+    <div class="max-w-xl">
+      <span class="inline-flex items-center gap-2 rounded-full border border-line/15 bg-surface px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-mute">
+        Giải đáp thắc mắc
+      </span>
+      <h2 class="text-2xl font-bold tracking-tight mt-2">Câu hỏi thường gặp</h2>
+    </div>
+
+    <div class="space-y-3 max-w-3xl">
+      <details class="group rounded-2xl border border-line/10 bg-surface p-4 text-sm transition open:shadow-sm" open>
+        <summary class="font-semibold cursor-pointer list-none flex items-center justify-between">
+          <span>Hệ thống có bảo mật hóa đơn và tự động xóa file không?</span>
+          <span class="transition group-open:rotate-180">▾</span>
+        </summary>
+        <p class="mt-3 text-mute text-xs leading-relaxed">
+          Có. DocuFlow AI mã hóa tệp truyền tải theo chuẩn TLS 1.3 và lưu trữ tạm thời trong phiên làm việc. Sau khi bạn xuất file hoặc sau 24 giờ, hệ thống sẽ tự động dọn dẹp các tệp ảnh và PDF gốc để bảo vệ bí mật kinh doanh.
+        </p>
+      </details>
+
+      <details class="group rounded-2xl border border-line/10 bg-surface p-4 text-sm transition open:shadow-sm">
+        <summary class="font-semibold cursor-pointer list-none flex items-center justify-between">
+          <span>Hóa đơn bị nghiêng hoặc chữ viết tay có nhận diện được không?</span>
+          <span class="transition group-open:rotate-180">▾</span>
+        </summary>
+        <p class="mt-3 text-mute text-xs leading-relaxed">
+          AI Vision tự động xoay thẳng và phân vùng nhận diện. Những ô có độ tin cậy thấp (dưới 85%) sẽ được tô viền màu cam để người dùng đối chiếu trực quan bên cạnh và sửa lại chỉ với 1 cú click.
+        </p>
+      </details>
+
+      <details class="group rounded-2xl border border-line/10 bg-surface p-4 text-sm transition open:shadow-sm">
+        <summary class="font-semibold cursor-pointer list-none flex items-center justify-between">
+          <span>File Excel xuất ra có giữ được số 0 ở đầu Mã số thuế không?</span>
+          <span class="transition group-open:rotate-180">▾</span>
+        </summary>
+        <p class="mt-3 text-mute text-xs leading-relaxed">
+          Chắc chắn có. Thuật toán xuất dữ liệu của DocuFlow AI tự động định dạng các cột Mã số thuế và Số hóa đơn theo kiểu chuỗi Text (`="0312..."`), giúp Excel không tự ý cắt bỏ số 0 ban đầu và tích hợp mã BOM UTF-8 không lỗi tiếng Việt.
+        </p>
+      </details>
+    </div>
+  </section>
+
+</main>
+
+<!-- Footer -->
+<footer class="border-t border-line/10 py-6 text-xs text-mute bg-surface2/20">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+    <p>© 2026 DocuFlow AI. Nền tảng tự động hóa xử lý chứng từ sang Excel.</p>
+    <div class="flex items-center gap-4">
+      <span>1 trang = 1 credit</span>
+      <span>•</span>
+      <span>Hỗ trợ xuất UTF-8 Excel</span>
+      <span>•</span>
+      <span>Chính xác &amp; Bảo mật</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ================= MODALS & OVERLAYS ================= -->
+
+<!-- 1. Modal Chỉnh sửa Form trước khi Xuất Excel (Workflow Export Modal) -->
+<div id="exportEditModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden place-items-center p-4">
+  <div class="w-full max-w-xl bg-surface border border-line/10 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-start justify-between">
+      <div>
+        <span class="chip ok text-[10px]">KIỂM TRA TRƯỚC KHI XUẤT</span>
+        <h3 class="text-lg font-bold mt-1">Chỉnh sửa Form chi tiết</h3>
+        <p class="text-xs text-mute">Dữ liệu sửa tại đây sẽ tự động đồng bộ vào file Excel tải xuống.</p>
+      </div>
+      <button class="btn-close-modal text-mute hover:text-ink text-xl font-bold p-1">&times;</button>
+    </div>
+
+    <!-- Document Tabs -->
+    <div id="modalTabsContainer" class="flex gap-1.5 overflow-x-auto pb-1 text-xs"></div>
+
+    <!-- Edit Form Grid -->
+    <form id="modalEditForm" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+      <div class="sm:col-span-2">
+        <label class="block font-semibold mb-1">Tên nhà cung cấp</label>
+        <input type="text" id="mSupplier" class="field-input font-medium" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Số hóa đơn</label>
+        <input type="text" id="mInvoiceNo" class="field-input font-mono" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Mã số thuế (MST)</label>
+        <input type="text" id="mTaxId" class="field-input font-mono" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Ngày lập (DD/MM/YYYY)</label>
+        <input type="text" id="mDate" class="field-input font-mono" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Tiền hàng (VND)</label>
+        <input type="number" id="mSubtotal" class="field-input font-mono" step="1000" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Tiền thuế GTGT (VND)</label>
+        <input type="number" id="mTax" class="field-input font-mono" step="1000" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Tổng thanh toán (VND)</label>
+        <input type="text" id="mTotal" class="field-input font-mono bg-line/5 font-bold text-brand" readonly />
+      </div>
+      
+      <div class="sm:col-span-2 pt-2 flex items-center justify-end gap-2 border-t border-line/10 mt-2">
+        <button type="button" class="btn-close-modal px-4 py-2 rounded-full border border-line/20 hover:bg-line/5 text-xs font-semibold">Đóng</button>
+        <button type="button" id="btnSaveModalOnly" class="px-4 py-2 rounded-full bg-surface2 hover:bg-line/10 text-xs font-bold transition">Lưu thay đổi</button>
+        <button type="submit" class="px-5 py-2 rounded-full bg-brand text-white hover:bg-brandHover text-xs font-bold transition flex items-center gap-1.5 shadow">
+          <svg class="h-3.5 w-3.5"><use href="#i-download"/></svg>Lưu &amp; Xuất file Excel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 2. Modal Đăng nhập / Tài khoản & Quên mật khẩu -->
+<div id="authModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden place-items-center p-4">
+  <div class="w-full max-w-sm bg-surface border border-line/10 rounded-3xl p-6 shadow-2xl space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-bold" id="authTitle">Đăng nhập DocuFlow</h3>
+      <button class="btn-close-modal text-mute hover:text-ink text-xl font-bold">&times;</button>
+    </div>
+    
+    <!-- Google fast login -->
+    <button id="btnGoogleAuth" type="button" class="w-full py-2.5 px-3 rounded-2xl border border-line/20 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-line/5 transition">
+      <svg class="h-4 w-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+      Tiếp tục với Google (Tặng 20 credit)
+    </button>
+
+    <div class="flex items-center gap-2 text-[11px] text-mute my-2">
+      <span class="flex-1 h-px bg-line/15"></span>hoặc email<span class="flex-1 h-px bg-line/15"></span>
+    </div>
+
+    <form id="emailLoginForm" class="space-y-3 text-xs">
+      <div>
+        <label class="block font-semibold mb-1">Email</label>
+        <input type="email" id="authEmail" class="field-input" placeholder="ketoan@doanhnghiep.vn" required />
+      </div>
+      <div>
+        <label class="block font-semibold mb-1">Mật khẩu</label>
+        <input type="password" id="authPassword" class="field-input" placeholder="••••••••" required />
+      </div>
+      <div class="flex justify-between items-center text-[11px]">
+        <label class="flex items-center gap-1 cursor-pointer text-mute">
+          <input type="checkbox" checked class="rounded" /> Ghi nhớ phiên
+        </label>
+        <button type="button" id="btnForgotPwd" class="text-brand hover:underline">Quên mật khẩu?</button>
+      </div>
+      <button type="submit" class="w-full py-2.5 rounded-full bg-brand text-white font-bold hover:bg-brandHover transition">
+        Đăng nhập vào Workspace
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- 3. Modal Nạp tiền VietQR Bank API -->
+<div id="qrPaymentModal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden place-items-center p-4">
+  <div class="w-full max-w-sm bg-surface border border-line/10 rounded-3xl p-6 shadow-2xl text-center space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-base">Nạp thêm 100 Credit</h3>
+      <button class="btn-close-modal text-mute hover:text-ink text-xl font-bold">&times;</button>
+    </div>
+    
+    <div class="flex justify-center my-2">
+      <div class="p-3 bg-white rounded-2xl border border-line/10 shadow-inner">
+        <!-- Visual VietQR Box -->
+        <div class="qr-code rounded-lg mx-auto"></div>
+        <p class="font-mono font-bold text-xs mt-2 text-[#0B1B3A]">DOCUFLOW_99214</p>
+      </div>
+    </div>
+
+    <div class="text-xs space-y-1 text-mute">
+      <p>Số tiền: <b class="text-ink font-mono text-sm">99.000 ₫</b></p>
+      <p>Nội dung CK: <b class="text-brand font-mono">DF CREDIT USER01</b></p>
+      <p class="text-[11px] text-emerald-600 font-semibold pt-1">Hệ thống tự động kích hoạt sau khi nhận biến động số dư.</p>
+    </div>
+
+    <button id="btnSimulatePaymentSuccess" class="w-full py-2.5 rounded-full bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition">
+      [Mô phỏng Đã chuyển khoản thành công]
+    </button>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast" class="fixed bottom-5 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl bg-[#0B1B3A] text-white text-xs font-medium shadow-2xl opacity-0 pointer-events-none transition-all duration-300 translate-y-2"></div>
+
+<!-- ================= JAVASCRIPT LOGIC ================= -->
+<script>
+  // --- APPLICATION STATE ---
+  const state = {
+    credits: 20,
+    isLoggedIn: false,
+    userEmail: '',
+    currentDocIndex: 0,
+    modalDocIndex: 0,
+    documents: [
+      {
+        fileName: 'Invoice_084.pdf',
+        format: 'PDF • 1 trang',
+        supplier: 'Northline Studio',
+        taxId: '0318992145',
+        invoiceNo: 'INV-2026-084',
+        date: '28/10/2026',
+        subtotal: 42500000,
+        tax: 4250000,
+        total: 46750000,
+        hasLowConfidence: true,
+        auditDone: false
+      },
+      {
+        fileName: 'Invoice_085.jpg',
+        format: 'JPG • Ảnh chụp',
+        supplier: 'Atlas Office Supply',
+        taxId: '0109923841',
+        invoiceNo: 'INV-2026-085',
+        date: '29/10/2026',
+        subtotal: 19600000,
+        tax: 1960000,
+        total: 21560000,
+        hasLowConfidence: false,
+        auditDone: true
+      },
+      {
+        fileName: 'Invoice_086.pdf',
+        format: 'PDF • 1 trang',
+        supplier: 'Meridian Supply Co.',
+        taxId: '0308821990',
+        invoiceNo: 'INV-2026-086',
+        date: '29/10/2026',
+        subtotal: 28000000,
+        tax: 2800000,
+        total: 30800000,
+        hasLowConfidence: false,
+        auditDone: true
+      },
+      {
+        fileName: 'Invoice_087.png',
+        format: 'PNG • Ảnh scan',
+        supplier: 'Harbor Logistics',
+        taxId: '0200881920',
+        invoiceNo: 'INV-2026-087',
+        date: '30/10/2026',
+        subtotal: 9850000,
+        tax: 985000,
+        total: 10835000,
+        hasLowConfidence: false,
+        auditDone: true
+      }
+    ]
+  };
+
+  const fmtVnd = n => Number(n || 0).toLocaleString('vi-VN');
+  const showToast = msg => {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('opacity-0', 'translate-y-2', 'pointer-events-none');
+    t.classList.add('opacity-100', 'translate-y-0');
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => {
+      t.classList.remove('opacity-100', 'translate-y-0');
+      t.classList.add('opacity-0', 'translate-y-2', 'pointer-events-none');
+    }, 2800);
+  };
+
+  // --- RENDER WORKSPACE ---
+  function renderDocumentsList() {
+    const list = document.getElementById('docsList');
+    document.getElementById('docCountLabel').textContent = `Tài liệu / ${String(state.documents.length).padStart(2, '0')}`;
+    
+    if (state.documents.length === 0) {
+      list.innerHTML = `<div class="p-4 text-center text-xs text-mute border border-dashed border-line/20 rounded-xl">Không có tài liệu nào. Bấm 'Tải thêm' hoặc 'Phiên mới'.</div>`;
+      renderInspector(null);
+      return;
+    }
+
+    list.innerHTML = state.documents.map((doc, idx) => {
+      const active = idx === state.currentDocIndex;
+      return `
+        <div class="doc-item flex items-center justify-between p-2 rounded-xl border transition cursor-pointer ${active ? 'border-brand bg-brand/10' : 'border-line/10 bg-surface hover:bg-line/5'}" data-idx="${idx}">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
+            <span class="p-1.5 rounded-lg bg-brand/10 text-brand flex-none">
+              <svg class="h-4 w-4"><use href="#i-file"/></svg>
+            </span>
+            <div class="min-w-0">
+              <b class="block truncate text-xs">${doc.fileName}</b>
+              <span class="flex items-center gap-1 text-[10px] ${doc.hasLowConfidence && !doc.auditDone ? 'text-amber-600' : 'text-emerald-600'}">
+                <svg class="h-3 w-3"><use href="#i-check"/></svg>
+                ${doc.hasLowConfidence && !doc.auditDone ? 'Cần rà soát' : 'Đã bóc tách'}
+              </span>
+            </div>
+          </div>
+          <button type="button" class="btn-delete-doc p-1 text-mute hover:text-red-500 rounded" data-idx="${idx}" title="Xóa tài liệu">
+            <svg class="h-3.5 w-3.5"><use href="#i-trash"/></svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    // Events
+    list.querySelectorAll('.doc-item').forEach(el => {
+      el.addEventListener('click', e => {
+        if (!e.target.closest('.btn-delete-doc')) {
+          state.currentDocIndex = +el.dataset.idx;
+          renderWorkspace();
+        }
+      });
+    });
+
+    list.querySelectorAll('.btn-delete-doc').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const delIdx = +btn.dataset.idx;
+        const doc = state.documents[delIdx];
+        if (!doc) return;
+        const name = doc.fileName;
+        if (doc.id) {
+          try {
+            await fetch(`/api/documents/${doc.id}`, {
+              method: 'DELETE',
+              headers: getAuthHeader()
+            });
+          } catch (err) {
+            console.error('Delete error:', err);
+          }
+        }
+        state.documents.splice(delIdx, 1);
+        if (state.currentDocIndex >= state.documents.length) {
+          state.currentDocIndex = Math.max(0, state.documents.length - 1);
+        }
+        renderWorkspace();
+        showToast(`Đã xóa: ${name}`);
+      });
+    });
+
+    renderInspector(state.documents[state.currentDocIndex]);
+    renderExcelTable();
+  }
+
+  let appCurrentZoom = 1;
+
+  function renderInspector(doc) {
+    const imgEl = document.getElementById('appRealImgPreview');
+    const pdfEl = document.getElementById('appRealPdfPreview');
+    const mockEl = document.getElementById('appMockInvoiceContainer');
+    const badge = document.getElementById('docBadgeFormat');
+    const zoomText = document.getElementById('appZoomLevel');
+
+    appCurrentZoom = 1;
+    if (zoomText) zoomText.textContent = '100%';
+    if (imgEl) imgEl.style.transform = 'scale(1)';
+
+    if (!doc) {
+      if (imgEl) imgEl.classList.add('hidden');
+      if (pdfEl) pdfEl.classList.add('hidden');
+      if (mockEl) {
+        mockEl.classList.remove('hidden');
+        mockEl.innerHTML = `<div class="p-8 text-center text-mute text-xs">Vui lòng tải lên hoặc chọn hóa đơn.</div>`;
+      }
+      if (badge) badge.textContent = '0 trang';
+      return;
+    }
+
+    const isImg = (doc.format && doc.format.includes('Ảnh')) || /\.(jpe?g|png)$/i.test(doc.fileName);
+    if (badge) badge.textContent = doc.format || (isImg ? 'Ảnh JPG/PNG' : 'PDF • 1 trang');
+
+    const fileSrc = doc.fileUrl || (doc.filePath ? doc.filePath : null);
+
+    if (fileSrc) {
+      if (mockEl) mockEl.classList.add('hidden');
+      if (isImg) {
+        if (pdfEl) pdfEl.classList.add('hidden');
+        if (imgEl) {
+          imgEl.src = fileSrc;
+          imgEl.classList.remove('hidden');
+        }
+      } else {
+        if (imgEl) imgEl.classList.add('hidden');
+        if (pdfEl) {
+          pdfEl.src = fileSrc;
+          pdfEl.classList.remove('hidden');
+        }
+      }
+    } else {
+      if (imgEl) imgEl.classList.add('hidden');
+      if (pdfEl) pdfEl.classList.add('hidden');
+      if (mockEl) {
+        mockEl.classList.remove('hidden');
+        mockEl.innerHTML = renderAppMockInvoice(doc);
+      }
+    }
+  }
+
+  function renderAppMockInvoice(doc) {
+    const items = doc.items || [
+      { stt: 1, name: 'Cung cấp giải pháp số hóa tài liệu AI', unit: 'Gói', qty: 1, price: Math.round(doc.subtotal * 0.8), amount: Math.round(doc.subtotal * 0.8) },
+      { stt: 2, name: 'Bảo trì hệ thống & hỗ trợ kỹ thuật năm 2026', unit: 'Năm', qty: 1, price: Math.round(doc.subtotal * 0.2), amount: Math.round(doc.subtotal * 0.2) }
+    ];
+
+    const itemsRows = items.map(it => `
+      <tr class="border-b border-slate-200">
+        <td class="py-1 px-1.5 text-center text-[10.5px] text-slate-500">${it.stt}</td>
+        <td class="py-1 px-2 text-[11px] font-medium text-slate-800">${doc.supplier ? it.name : 'Dịch vụ'}</td>
+        <td class="py-1 px-1 text-center text-[10.5px] text-slate-600">${it.unit}</td>
+        <td class="py-1 px-1 text-center text-[10.5px] font-mono">${it.qty}</td>
+        <td class="py-1 px-1.5 text-right text-[10.5px] font-mono">${fmtVnd(it.price)}</td>
+        <td class="py-1 px-1.5 text-right text-[11px] font-mono font-semibold text-slate-900">${fmtVnd(it.amount)}</td>
+      </tr>
+    `).join('');
+
+    return `
+    <div class="bg-white text-slate-900 p-4 rounded-xl shadow-md border border-slate-200 font-sans text-xs">
+      <div class="text-center pb-2.5 border-b-2 border-brand/80">
+        <h3 class="text-sm font-extrabold tracking-wide uppercase text-brand">HÓA ĐƠN GIÁ TRỊ GIA TĂNG (ĐIỆN TỬ)</h3>
+        <div class="flex justify-between items-center text-[10.5px] font-mono text-slate-600 mt-1.5 px-1">
+          <span>Ký hiệu: <b>1C26TDF</b></span>
+          <span>Số: <b class="text-red-600">${doc.invoiceNo}</b></span>
+          <span>Ngày: <b>${doc.date}</b></span>
+        </div>
+      </div>
+      <div class="mt-2.5 bg-slate-50 p-2 rounded-lg border border-slate-100 text-[11px] leading-relaxed">
+        <div>Đơn vị bán hàng: <b class="text-slate-900">${doc.supplier}</b></div>
+        <div class="flex justify-between mt-0.5">
+          <span>Mã số thuế: <b class="font-mono text-brand">${doc.taxId}</b></span>
+          <span class="text-slate-500">ĐT: 028.3999.8888</span>
+        </div>
+      </div>
+      <div class="mt-2.5 overflow-x-auto">
+        <table class="w-full border-collapse border border-slate-200">
+          <thead class="bg-slate-100 text-[10px] text-slate-700 uppercase font-semibold">
+            <tr class="border-b border-slate-200">
+              <th class="py-1 px-1 text-center w-7">STT</th>
+              <th class="py-1 px-1.5 text-left">Tên hàng hóa, dịch vụ</th>
+              <th class="py-1 px-1 text-center w-10">ĐVT</th>
+              <th class="py-1 px-1 text-center w-8">SL</th>
+              <th class="py-1 px-1.5 text-right w-20">Đơn giá</th>
+              <th class="py-1 px-1.5 text-right w-24">Thành tiền</th>
+            </tr>
+          </thead>
+          <tbody>${itemsRows}</tbody>
+        </table>
+      </div>
+      <div class="mt-2.5 bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-1 text-xs">
+        <div class="flex justify-between text-slate-600 text-[11px]">
+          <span>Tạm tính:</span><span class="font-mono">${fmtVnd(doc.subtotal)} ₫</span>
+        </div>
+        <div class="flex justify-between text-slate-600 text-[11px]">
+          <span>Thuế GTGT (10%):</span><span class="font-mono">${fmtVnd(doc.tax)} ₫</span>
+        </div>
+        <div class="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200 text-xs">
+          <span>TỔNG CỘNG:</span><span class="font-mono text-brand">${fmtVnd(doc.total)} ₫</span>
+        </div>
+      </div>
+      <div class="mt-3 flex justify-between items-center text-[10px] text-slate-500">
+        <div>Mã tra cứu: <span class="font-mono font-bold text-slate-700">DF202688419X</span></div>
+        <div class="border border-dashed border-emerald-600 bg-emerald-50 text-emerald-800 px-2 py-1 rounded text-center">
+          <div class="font-bold text-[10px]">✓ Signature Valid</div>
+          <div class="text-[9px]">Ký bởi: ${doc.supplier}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function renderExcelTable() {
+    const doc = state.documents[state.currentDocIndex];
+    const table = document.getElementById('appExcelGridTable');
+    const title = document.getElementById('appExcelTitle');
+    if (!table) return;
+
+    if (!doc) {
+      table.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-mute text-xs">Chưa có hóa đơn nào được chọn.</td></tr>`;
+      if (title) title.textContent = 'Invoice_Data.xlsx';
+      return;
+    }
+
+    if (title) title.textContent = `${doc.fileName.replace(/\.[^/.]+$/, '')}_BocTach.xlsx`;
+
+    const items = doc.items || [
+      { stt: 1, name: 'Cung cấp giải pháp số hóa tài liệu AI', unit: 'Gói', qty: 1, price: Math.round(doc.subtotal * 0.8), amount: Math.round(doc.subtotal * 0.8) },
+      { stt: 2, name: 'Bảo trì hệ thống & hỗ trợ kỹ thuật năm 2026', unit: 'Năm', qty: 1, price: Math.round(doc.subtotal * 0.2), amount: Math.round(doc.subtotal * 0.2) }
+    ];
+
+    let rowsHtml = `
+      <thead>
+        <tr class="bg-surface2/80 text-[11px] text-mute border-b border-line/15 text-center font-bold">
+          <th class="w-8 py-1 px-1 bg-surface2/90 border-r border-line/15">#</th>
+          <th class="w-10 py-1 px-1 border-r border-line/15">A</th>
+          <th class="py-1 px-2 border-r border-line/15">B</th>
+          <th class="w-14 py-1 px-1 border-r border-line/15">C</th>
+          <th class="w-14 py-1 px-1 border-r border-line/15">D</th>
+          <th class="w-24 py-1 px-2 border-r border-line/15">E</th>
+          <th class="w-28 py-1 px-2">F</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-b border-line/10 hover:bg-line/5">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">1</td>
+          <td colspan="6" class="py-1 px-2 font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 text-xs">
+            HÓA ĐƠN GIÁ TRỊ GIA TĂNG — BẢNG KÊ EXCEL BÓC TÁCH
+          </td>
+        </tr>
+        <tr class="border-b border-line/10 hover:bg-line/5">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">2</td>
+          <td class="py-1 px-1.5 font-semibold text-mute border-r border-line/10">Đơn vị bán</td>
+          <td colspan="2" class="app-excel-cell py-1 px-2 border-r border-line/10 font-bold focus:bg-emerald-50 focus:text-slate-900 outline-none" contenteditable="true" data-cell="B2" data-field="supplier">${doc.supplier}</td>
+          <td class="py-1 px-1.5 font-semibold text-mute border-r border-line/10">Số HĐ</td>
+          <td colspan="2" class="app-excel-cell py-1 px-2 font-mono font-bold text-red-600 focus:bg-emerald-50 outline-none" contenteditable="true" data-cell="E2" data-field="invoiceNo">${doc.invoiceNo}</td>
+        </tr>
+        <tr class="border-b border-line/10 hover:bg-line/5">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">3</td>
+          <td class="py-1 px-1.5 font-semibold text-mute border-r border-line/10">Mã số thuế</td>
+          <td colspan="2" class="app-excel-cell py-1 px-2 border-r border-line/10 font-mono text-brand focus:bg-emerald-50 outline-none" contenteditable="true" data-cell="B3" data-field="taxId">${doc.taxId}</td>
+          <td class="py-1 px-1.5 font-semibold text-mute border-r border-line/10">Ngày lập</td>
+          <td colspan="2" class="app-excel-cell py-1 px-2 font-mono focus:bg-emerald-50 outline-none" contenteditable="true" data-cell="E3" data-field="date">${doc.date}</td>
+        </tr>
+        <tr class="border-b border-line/15 bg-surface2/50 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">4</td>
+          <td class="py-1 px-1 text-center border-r border-line/10">STT</td>
+          <td class="py-1 px-2 border-r border-line/10">Tên hàng hóa, dịch vụ</td>
+          <td class="py-1 px-1 text-center border-r border-line/10">ĐVT</td>
+          <td class="py-1 px-1 text-center border-r border-line/10">SL</td>
+          <td class="py-1 px-2 text-right border-r border-line/10">Đơn giá</td>
+          <td class="py-1 px-2 text-right">Thành tiền</td>
+        </tr>
+    `;
+
+    items.forEach((it, idx) => {
+      const rowNum = 5 + idx;
+      rowsHtml += `
+        <tr class="border-b border-line/10 hover:bg-line/5">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">${rowNum}</td>
+          <td class="app-excel-cell py-1 px-1 text-center border-r border-line/10 text-mute" data-cell="A${rowNum}">${it.stt}</td>
+          <td class="app-excel-cell py-1 px-2 border-r border-line/10 font-medium focus:bg-emerald-50 focus:text-slate-900 outline-none" contenteditable="true" data-cell="B${rowNum}" data-item-idx="${idx}" data-item-key="name">${it.name}</td>
+          <td class="app-excel-cell py-1 px-1 text-center border-r border-line/10 focus:bg-emerald-50 focus:text-slate-900 outline-none" contenteditable="true" data-cell="C${rowNum}" data-item-idx="${idx}" data-item-key="unit">${it.unit}</td>
+          <td class="app-excel-cell py-1 px-1 text-center border-r border-line/10 font-mono focus:bg-emerald-50 focus:text-slate-900 outline-none" contenteditable="true" data-cell="D${rowNum}" data-item-idx="${idx}" data-item-key="qty">${it.qty}</td>
+          <td class="app-excel-cell py-1 px-2 text-right border-r border-line/10 font-mono focus:bg-emerald-50 focus:text-slate-900 outline-none" contenteditable="true" data-cell="E${rowNum}" data-item-idx="${idx}" data-item-key="price">${fmtVnd(it.price)}</td>
+          <td class="app-excel-cell py-1 px-2 text-right font-mono font-semibold text-ink focus:bg-emerald-50 outline-none" data-cell="F${rowNum}">${fmtVnd(it.amount)}</td>
+        </tr>
+      `;
+    });
+
+    const nextRow = 5 + items.length;
+
+    rowsHtml += `
+        <tr class="border-b border-line/10 hover:bg-line/5 bg-surface2/20">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">${nextRow}</td>
+          <td colspan="4" class="py-1 px-2 font-semibold text-right border-r border-line/10 text-mute">Tiền hàng (Tạm tính)</td>
+          <td colspan="2" class="py-1 px-2 font-mono font-semibold text-right" id="appExcelSubtotal">${fmtVnd(doc.subtotal)} ₫</td>
+        </tr>
+        <tr class="border-b border-line/10 hover:bg-line/5 bg-surface2/20">
+          <td class="bg-surface2/60 text-center font-bold text-mute text-[10px] border-r border-line/15">${nextRow + 1}</td>
+          <td colspan="4" class="py-1 px-2 font-semibold text-right border-r border-line/10 text-mute">Thuế suất GTGT (10%)</td>
+          <td colspan="2" class="py-1 px-2 font-mono font-semibold text-right" id="appExcelTax">${fmtVnd(doc.tax)} ₫</td>
+        </tr>
+        <tr class="border-b-2 border-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/15 font-bold">
+          <td class="bg-emerald-600/20 text-center font-bold text-emerald-800 dark:text-emerald-200 text-[10px] border-r border-line/15">${nextRow + 2}</td>
+          <td colspan="4" class="py-1.5 px-2 text-right border-r border-line/10 uppercase tracking-wider text-xs text-emerald-800 dark:text-emerald-200">TỔNG THANH TOÁN (=SUM)</td>
+          <td colspan="2" class="py-1.5 px-2 font-mono font-extrabold text-right text-emerald-700 dark:text-emerald-300 text-sm" id="appExcelTotal">${fmtVnd(doc.total)} ₫</td>
+        </tr>
+      </tbody>
+    `;
+
+    table.innerHTML = rowsHtml;
+
+    // Active cell & Formula Bar
+    const activeCellBox = document.getElementById('appActiveCell');
+    const formulaInput = document.getElementById('appFormulaInput');
+
+    table.querySelectorAll('.app-excel-cell').forEach(cell => {
+      cell.onclick = () => {
+        table.querySelectorAll('.app-excel-cell').forEach(c => c.classList.remove('ring-2', 'ring-emerald-500', 'bg-emerald-500/10'));
+        cell.classList.add('ring-2', 'ring-emerald-500', 'bg-emerald-500/10');
+        const cellName = cell.dataset.cell || 'A1';
+        if (activeCellBox) activeCellBox.textContent = cellName;
+        if (formulaInput) formulaInput.value = cell.textContent.trim();
+      };
+
+      cell.oninput = () => {
+        if (formulaInput) formulaInput.value = cell.textContent.trim();
+        if (cell.dataset.field) {
+          doc[cell.dataset.field] = cell.textContent.trim();
+        }
+        if (cell.dataset.itemIdx !== undefined) {
+          const idx = +cell.dataset.itemIdx;
+          const key = cell.dataset.itemKey;
+          const it = items[idx];
+          if (it) {
+            if (key === 'qty') {
+              it.qty = parseFloat(cell.textContent) || 0;
+              it.amount = it.qty * it.price;
+            } else if (key === 'price') {
+              const raw = cell.textContent.replace(/[^0-9]/g, '');
+              it.price = parseFloat(raw) || 0;
+              it.amount = it.qty * it.price;
+            } else if (key === 'name') {
+              it.name = cell.textContent.trim();
+            } else if (key === 'unit') {
+              it.unit = cell.textContent.trim();
+            }
+
+            const rowNum = 5 + idx;
+            const amtCell = table.querySelector(`[data-cell="F${rowNum}"]`);
+            if (amtCell) amtCell.textContent = fmtVnd(it.amount);
+
+            // Recalculate
+            doc.subtotal = items.reduce((s, x) => s + (x.amount || 0), 0);
+            doc.tax = Math.round(doc.subtotal * 0.1);
+            doc.total = doc.subtotal + doc.tax;
+
+            const subEl = document.getElementById('appExcelSubtotal');
+            const taxEl = document.getElementById('appExcelTax');
+            const totEl = document.getElementById('appExcelTotal');
+            if (subEl) subEl.textContent = fmtVnd(doc.subtotal) + ' ₫';
+            if (taxEl) taxEl.textContent = fmtVnd(doc.tax) + ' ₫';
+            if (totEl) totEl.textContent = fmtVnd(doc.total) + ' ₫';
+          }
+        }
+      };
+    });
+
+    const defCell = table.querySelector('[data-cell="B2"]');
+    if (defCell) defCell.click();
+  }
+
+  function renderAuditSection() {
+    const doc = state.documents[state.currentDocIndex];
+    const grid = document.getElementById('auditFieldsGrid');
+    const title = document.getElementById('auditDocTitle');
+    const badge = document.getElementById('auditBadge');
+    const pct = document.getElementById('auditPercent');
+    const alertBox = document.getElementById('auditAlertBox');
+
+    if (!doc) {
+      title.textContent = 'Chưa chọn tài liệu đối chiếu';
+      grid.innerHTML = '';
+      return;
+    }
+
+    title.textContent = `Đối chiếu: ${doc.fileName}`;
+    const needsAudit = doc.hasLowConfidence && !doc.auditDone;
+
+    badge.className = `chip ${needsAudit ? 'warn' : 'ok'}`;
+    badge.textContent = needsAudit ? '1 trường cần rà soát' : '100% Đã đối soát';
+    pct.textContent = needsAudit ? '86% Đã xác nhận' : '100% Đã xác nhận';
+    alertBox.classList.toggle('hidden', !needsAudit);
+
+    const fields = [
+      { key: 'no', label: 'Số hóa đơn', val: doc.invoiceNo, target: '#boxNo' },
+      { key: 'date', label: 'Ngày lập', val: doc.date, target: '#boxDate' },
+      { key: 'taxId', label: 'Mã số thuế', val: doc.taxId, target: '#boxSupplier' },
+      { key: 'sub', label: 'Tiền hàng', val: fmtVnd(doc.subtotal), target: '#boxSubtotal' },
+      { key: 'tax', label: 'Tiền thuế (GTGT)', val: fmtVnd(doc.tax), target: '#boxTax', isLow: needsAudit },
+      { key: 'tot', label: 'Tổng tiền', val: fmtVnd(doc.total), target: '#boxTotal' }
+    ];
+
+    grid.innerHTML = fields.map(f => `
+      <div class="audit-field-card p-2.5 rounded-xl border transition cursor-pointer ${f.isLow ? 'border-amber-500/50 bg-amber-500/10' : 'border-line/10 bg-surface hover:border-brand/40'}" data-target="${f.target}" data-key="${f.key}">
+        <div class="flex justify-between items-center text-[11px] text-mute mb-1">
+          <span>${f.label}</span>
+          ${f.isLow ? '<span class="text-amber-600 font-bold">Cần sửa</span>' : '<span class="text-emerald-600">✓</span>'}
+        </div>
+        <input type="text" value="${f.val}" class="w-full bg-transparent font-mono font-semibold text-xs text-ink outline-none border-b border-transparent focus:border-brand" />
+      </div>
+    `).join('');
+
+    // Highlighting interaction
+    grid.querySelectorAll('.audit-field-card').forEach(card => {
+      const targetEl = document.querySelector(card.dataset.target);
+      card.addEventListener('mouseenter', () => {
+        document.querySelectorAll('.inv-box').forEach(b => b.classList.remove('hl'));
+        if (targetEl) targetEl.classList.add('hl');
+      });
+      card.addEventListener('mouseleave', () => {
+        if (targetEl) targetEl.classList.remove('hl');
+      });
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.inv-box').forEach(b => b.classList.remove('hl'));
+        if (targetEl) targetEl.classList.add('hl');
+        card.querySelector('input').focus();
+      });
+
+      // Auto resolve warning when editing
+      const inp = card.querySelector('input');
+      inp.addEventListener('input', () => {
+        if (card.dataset.key === 'tax' && doc.hasLowConfidence) {
+          doc.auditDone = true;
+          renderWorkspace();
+          showToast('Đã cập nhật giá trị tiền thuế!');
+        }
+      });
+    });
+  }
+
+  function renderWorkspace() {
+    renderDocumentsList();
+    renderExcelTable();
+    renderAuditSection();
+  }
+
+  // --- MODAL FORMS ---
+  function openExportEditModal(docIdx) {
+    if (state.documents.length === 0) return showToast('Không có dữ liệu để xuất.');
+    state.modalDocIndex = typeof docIdx === 'number' ? docIdx : state.currentDocIndex;
+    const modal = document.getElementById('exportEditModal');
+    
+    // Render tabs
+    const tabs = document.getElementById('modalTabsContainer');
+    tabs.innerHTML = state.documents.map((d, i) => `
+      <button type="button" class="modal-tab px-3 py-1 rounded-full border transition whitespace-nowrap ${i === state.modalDocIndex ? 'bg-brand text-white border-brand font-bold' : 'bg-surface border-line/15 text-mute'}" data-i="${i}">
+        ${d.fileName}
+      </button>
+    `).join('');
+
+    tabs.querySelectorAll('.modal-tab').forEach(t => {
+      t.onclick = () => {
+        saveModalInputsToState();
+        openExportEditModal(+t.dataset.i);
+      };
+    });
+
+    // Populate values
+    const doc = state.documents[state.modalDocIndex];
+    document.getElementById('mSupplier').value = doc.supplier;
+    document.getElementById('mInvoiceNo').value = doc.invoiceNo;
+    document.getElementById('mTaxId').value = doc.taxId;
+    document.getElementById('mDate').value = doc.date;
+    document.getElementById('mSubtotal').value = doc.subtotal;
+    document.getElementById('mTax').value = doc.tax;
+    document.getElementById('mTotal').value = fmtVnd(doc.subtotal + doc.tax) + ' ₫';
+
+    modal.classList.remove('hidden');
+    modal.classList.add('grid');
+  }
+
+  function saveModalInputsToState() {
+    const doc = state.documents[state.modalDocIndex];
+    if (!doc) return;
+    doc.supplier = document.getElementById('mSupplier').value.trim();
+    doc.invoiceNo = document.getElementById('mInvoiceNo').value.trim();
+    doc.taxId = document.getElementById('mTaxId').value.trim();
+    doc.date = document.getElementById('mDate').value.trim();
+    doc.subtotal = parseFloat(document.getElementById('mSubtotal').value) || 0;
+    doc.tax = parseFloat(document.getElementById('mTax').value) || 0;
+    doc.total = doc.subtotal + doc.tax;
+    renderWorkspace();
+
+    if (doc.id) {
+      const token = localStorage.getItem('docuflow_token');
+      fetch(`/api/documents/${doc.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          supplier: doc.supplier,
+          invoice_no: doc.invoiceNo,
+          tax_id: doc.taxId,
+          date: doc.date,
+          subtotal: doc.subtotal,
+          tax: doc.tax,
+          total: doc.total
+        })
+      }).catch(err => console.error('Save doc error:', err));
+    }
+  }
+
+  // Auto calc in modal
+  const calcModalTotal = () => {
+    const sub = parseFloat(document.getElementById('mSubtotal').value) || 0;
+    const tax = parseFloat(document.getElementById('mTax').value) || 0;
+    document.getElementById('mTotal').value = fmtVnd(sub + tax) + ' ₫';
+  };
+  document.getElementById('mSubtotal').addEventListener('input', calcModalTotal);
+  document.getElementById('mTax').addEventListener('input', calcModalTotal);
+
+  // Xuất file Microsoft Excel .xlsx chuẩn với SheetJS và đồng bộ Backend
+  function generateAndDownloadFile() {
+    saveModalInputsToState();
+    if (state.documents.length === 0) {
+      showToast('Chưa có dữ liệu hóa đơn để xuất.');
+      return;
+    }
+
+    const doc = state.documents[state.currentDocIndex] || state.documents[0];
+    const allDocs = state.documents;
+
+    if (typeof XLSX !== 'undefined') {
+      try {
+        const wb = XLSX.utils.book_new();
+
+        // 1. SHEET CHI TIẾT HÓA ĐƠN
+        const sheet1Data = [
+          ["BẢNG KÊ CHI TIẾT HÓA ĐƠN ĐIỆN TỬ"],
+          ["Trích xuất tự động bởi DocuFlow AI - Hệ thống Kế toán Thông minh"],
+          [""],
+          ["Tên đơn vị bán / Nhà cung cấp:", doc.supplier || ""],
+          ["Mã số thuế:", String(doc.taxId || "")],
+          ["Số hóa đơn:", String(doc.invoiceNo || "")],
+          ["Ngày lập hóa đơn:", String(doc.date || "")],
+          ["Tệp tài liệu gốc:", String(doc.fileName || doc.name || "")],
+          [""],
+          ["STT", "Tên hàng hóa, dịch vụ", "Đơn vị tính", "Số lượng", "Đơn giá (VNĐ)", "Thành tiền (VNĐ)"]
+        ];
+
+        const items = (doc.items && doc.items.length) ? doc.items : [
+          { stt: 1, name: "Chi phí bóc tách theo " + (doc.fileName || doc.invoiceNo || "hóa đơn"), unit: "Gói", qty: 1, price: doc.subtotal || doc.total || 0, amount: doc.subtotal || doc.total || 0 }
+        ];
+
+        items.forEach((it, idx) => {
+          sheet1Data.push([
+            it.stt || (idx + 1),
+            it.name || ("Mặt hàng " + (idx + 1)),
+            it.unit || "Cái",
+            Number(it.qty) || 1,
+            Number(it.price) || 0,
+            Number(it.amount) || ((Number(it.qty) || 1) * (Number(it.price) || 0))
+          ]);
+        });
+
+        sheet1Data.push([""]);
+        sheet1Data.push(["", "", "", "", "Tiền hàng (Tạm tính):", Number(doc.subtotal) || 0]);
+        sheet1Data.push(["", "", "", "", "Thuế suất GTGT (10%):", Number(doc.tax) || 0]);
+        sheet1Data.push(["", "", "", "", "TỔNG THANH TOÁN:", Number(doc.total) || 0]);
+
+        const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+        ws1['!cols'] = [
+          { wch: 6 },
+          { wch: 42 },
+          { wch: 14 },
+          { wch: 10 },
+          { wch: 18 },
+          { wch: 22 }
+        ];
+        XLSX.utils.book_append_sheet(wb, ws1, "Chi tiết hóa đơn");
+
+        // 2. SHEET TỔNG HỢP TOÀN BỘ HÓA ĐƠN
+        const sheet2Data = [
+          ["BẢNG TỔNG HỢP DANH SÁCH HÓA ĐƠN ĐÃ BÓC TÁCH"],
+          ["Thời điểm xuất file:", new Date().toLocaleString('vi-VN')],
+          [""],
+          ["STT", "Tên tệp gốc", "Nhà cung cấp", "Mã số thuế", "Số hóa đơn", "Ngày lập", "Tiền hàng (VNĐ)", "Tiền thuế GTGT (VNĐ)", "Tổng thanh toán (VNĐ)", "Trạng thái rà soát"]
+        ];
+
+        let sumSub = 0, sumTax = 0, sumTot = 0;
+        allDocs.forEach((d, idx) => {
+          const sub = Number(d.subtotal) || 0;
+          const tax = Number(d.tax) || 0;
+          const tot = Number(d.total) || (sub + tax);
+          sumSub += sub; sumTax += tax; sumTot += tot;
+          sheet2Data.push([
+            idx + 1,
+            d.fileName || d.name || ("Invoice_" + (idx + 1)),
+            d.supplier || "",
+            String(d.taxId || ""),
+            String(d.invoiceNo || ""),
+            String(d.date || ""),
+            sub,
+            tax,
+            tot,
+            d.auditDone ? "Đã xác nhận" : "Cần rà soát"
+          ]);
+        });
+
+        sheet2Data.push([""]);
+        sheet2Data.push(["TỔNG CỘNG LŨY KẾ", "", "", "", "", "", sumSub, sumTax, sumTot, ""]);
+
+        const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+        ws2['!cols'] = [
+          { wch: 6 },
+          { wch: 25 },
+          { wch: 30 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 14 },
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 22 },
+          { wch: 16 }
+        ];
+        XLSX.utils.book_append_sheet(wb, ws2, "Tổng hợp danh sách");
+
+        const cleanNo = (doc.invoiceNo || 'Hoa_Don').replace(/[^a-zA-Z0-9_-]/g, '_');
+        XLSX.writeFile(wb, `${cleanNo}_DocuFlow.xlsx`);
+
+        showToast(`Đã xuất thành công hóa đơn ${doc.invoiceNo} ra file Excel (.xlsx)!`);
+      } catch (err) {
+        console.error('SheetJS export error:', err);
+        // Fallback route
+        const dlLink = document.createElement('a');
+        dlLink.href = '/api/documents/export/excel';
+        dlLink.download = `${doc.invoiceNo || 'DocuFlow'}.xlsx`;
+        document.body.appendChild(dlLink);
+        dlLink.click();
+        document.body.removeChild(dlLink);
+        showToast('Đang tải file Excel từ cơ sở dữ liệu...');
+      }
+    } else {
+      // Fallback route
+      const dlLink = document.createElement('a');
+      dlLink.href = '/api/documents/export/excel';
+      dlLink.download = 'DocuFlow_Bao_Cao_Hoa_Don.xlsx';
+      document.body.appendChild(dlLink);
+      dlLink.click();
+      document.body.removeChild(dlLink);
+      showToast('Đang tải file Excel (.xlsx)...');
+    }
+
+    // Deduct credit
+    if (state.credits > 0) {
+      state.credits = Math.max(0, state.credits - 1);
+      document.getElementById('creditBalance').textContent = state.credits;
+    }
+
+    closeAllModals();
+  }
+
+  function closeAllModals() {
+    document.querySelectorAll('.fixed.z-50').forEach(m => {
+      m.classList.add('hidden');
+      m.classList.remove('grid');
+    });
+  }
+
+  // --- AUTH & BACKEND HELPERS ---
+  const getAuthHeader = () => {
+    const token = localStorage.getItem('docuflow_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
+  async function fetchUserAndDocuments() {
+    const token = localStorage.getItem('docuflow_token');
+    if (token) {
+      try {
+        const resUser = await fetch('/api/auth/me', { headers: getAuthHeader() });
+        if (resUser.ok) {
+          const user = await resUser.json();
+          state.isLoggedIn = true;
+          state.userEmail = user.email;
+          state.credits = user.credits;
+          document.getElementById('authBtnText').textContent = user.full_name || user.email.split('@')[0];
+          document.getElementById('creditBalance').textContent = state.credits;
+        } else {
+          localStorage.removeItem('docuflow_token');
+          state.isLoggedIn = false;
+        }
+      } catch (e) {
+        console.warn('Auth check:', e);
+      }
+    }
+
+    try {
+      const resDocs = await fetch('/api/documents', { headers: getAuthHeader() });
+      if (resDocs.ok) {
+        const docs = await resDocs.json();
+        if (docs && docs.length > 0) {
+          state.documents = docs.map(d => ({
+            id: d.id,
+            fileName: d.file_name,
+            format: d.format,
+            supplier: d.supplier,
+            taxId: d.tax_id,
+            invoiceNo: d.invoice_no,
+            date: d.date,
+            subtotal: d.subtotal,
+            tax: d.tax,
+            total: d.total,
+            hasLowConfidence: d.has_low_confidence,
+            auditDone: d.audit_done
+          }));
+          state.currentDocIndex = 0;
+          renderWorkspace();
+        }
+      }
+    } catch (e) {
+      console.warn('Docs fetch:', e);
+    }
+  }
+
+  // --- ATTACH EVENT HANDLERS ---
+  document.addEventListener('DOMContentLoaded', () => {
+    renderWorkspace();
+    fetchUserAndDocuments();
+
+    // Theme toggle
+    document.getElementById('themeToggleBtn').addEventListener('click', () => {
+      const html = document.documentElement;
+      const isDark = html.getAttribute('data-theme') === 'dark';
+      html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      showToast(isDark ? 'Đã đổi sang giao diện Sáng' : 'Đã đổi sang giao diện Tối');
+    });
+
+    // Navigation Smooth Scroll
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(b => {
+          b.classList.remove('bg-ink', 'text-bgBase');
+          b.classList.add('text-mute');
+        });
+        tab.classList.add('bg-ink', 'text-bgBase');
+        tab.classList.remove('text-mute');
+        const sec = document.getElementById(tab.dataset.section);
+        if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    // Add files & AI extraction via Backend
+    const fileInp = document.getElementById('fileUploadInput');
+    document.getElementById('btnAddFiles').onclick = () => fileInp.click();
+    fileInp.onchange = async e => {
+      const files = Array.from(e.target.files);
+      if (!files.length) return;
+
+      showToast(`Đang tải lên & bóc tách AI cho ${files.length} hóa đơn...`);
+      
+      const formData = new FormData();
+      files.forEach(f => formData.append('files', f));
+
+      try {
+        const res = await fetch('/api/documents/upload', {
+          method: 'POST',
+          headers: getAuthHeader(),
+          body: formData
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          if (result.documents && result.documents.length) {
+            const newDocs = result.documents.map((d, i) => ({
+              id: d.id,
+              fileName: d.file_name,
+              filePath: d.file_path,
+              fileUrl: files[i] ? URL.createObjectURL(files[i]) : d.file_path,
+              format: d.format,
+              supplier: d.supplier,
+              taxId: d.tax_id,
+              invoiceNo: d.invoice_no,
+              date: d.date,
+              subtotal: d.subtotal,
+              tax: d.tax,
+              total: d.total,
+              hasLowConfidence: d.has_low_confidence,
+              auditDone: d.audit_done
+            }));
+            state.documents.push(...newDocs);
+            state.currentDocIndex = state.documents.length - 1;
+            if (result.credits !== undefined) {
+              state.credits = result.credits;
+              document.getElementById('creditBalance').textContent = state.credits;
+            }
+            renderWorkspace();
+            showToast(result.message || `Đã bóc tách thành công ${files.length} hóa đơn!`);
+          }
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.detail || 'Lỗi bóc tách hóa đơn.');
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối máy chủ khi tải lên.');
+      }
+      fileInp.value = '';
+    };
+
+    // Zoom controls for App middle viewer
+    const btnAppZoomIn = document.getElementById('btnAppZoomIn');
+    const btnAppZoomOut = document.getElementById('btnAppZoomOut');
+    const appZoomText = document.getElementById('appZoomLevel');
+    const appImg = document.getElementById('appRealImgPreview');
+    const appMock = document.getElementById('appMockInvoiceContainer');
+
+    if (btnAppZoomIn) {
+      btnAppZoomIn.onclick = () => {
+        appCurrentZoom = Math.min(2.5, appCurrentZoom + 0.2);
+        if (appZoomText) appZoomText.textContent = Math.round(appCurrentZoom * 100) + '%';
+        if (appImg) appImg.style.transform = `scale(${appCurrentZoom})`;
+        if (appMock) appMock.style.transform = `scale(${appCurrentZoom})`;
+      };
+    }
+    if (btnAppZoomOut) {
+      btnAppZoomOut.onclick = () => {
+        appCurrentZoom = Math.max(0.6, appCurrentZoom - 0.2);
+        if (appZoomText) appZoomText.textContent = Math.round(appCurrentZoom * 100) + '%';
+        if (appImg) appImg.style.transform = `scale(${appCurrentZoom})`;
+        if (appMock) appMock.style.transform = `scale(${appCurrentZoom})`;
+      };
+    }
+    const btnAppOpenTab = document.getElementById('btnAppOpenTab');
+    if (btnAppOpenTab) {
+      btnAppOpenTab.onclick = () => {
+        const cur = state.documents[state.currentDocIndex];
+        if (cur && (cur.fileUrl || cur.filePath)) {
+          window.open(cur.fileUrl || cur.filePath, '_blank');
+        } else {
+          showToast('Đây là hóa đơn mẫu hệ thống.');
+        }
+      };
+    }
+
+    // Reset session via Backend
+    document.getElementById('btnNewSession').onclick = async () => {
+      try {
+        const res = await fetch('/api/documents/reset-session', {
+          method: 'POST',
+          headers: getAuthHeader()
+        });
+        if (res.ok) {
+          const result = await res.json();
+          state.documents = result.documents.map(d => ({
+            id: d.id,
+            fileName: d.file_name,
+            format: d.format,
+            supplier: d.supplier,
+            taxId: d.tax_id,
+            invoiceNo: d.invoice_no,
+            date: d.date,
+            subtotal: d.subtotal,
+            tax: d.tax,
+            total: d.total,
+            hasLowConfidence: d.has_low_confidence,
+            auditDone: d.audit_done
+          }));
+          state.currentDocIndex = 0;
+          renderWorkspace();
+          showToast('Đã khởi tạo lại phiên làm việc mẫu trên cơ sở dữ liệu!');
+          return;
+        }
+      } catch (e) {
+        console.warn('Reset error:', e);
+      }
+      showToast('Đã khởi tạo phiên làm việc mới.');
+    };
+
+    // Custom workbook upload
+    const customTemplateInput = document.getElementById('customTemplateInput');
+    customTemplateInput.onchange = e => {
+      if (e.target.files.length) {
+        document.getElementById('customTemplateName').textContent = e.target.files[0].name;
+        showToast('Đã liên kết workbook mẫu của bạn!');
+      }
+    };
+    document.getElementById('btnResetTemplate').onclick = () => {
+      customTemplateInput.value = '';
+      document.getElementById('customTemplateName').textContent = 'Đang dùng mẫu hệ thống mặc định';
+      showToast('Đã chuyển về mẫu mặc định.');
+    };
+
+    // Export & Edit buttons - Xuất file trực tiếp, Form mở khi cần
+    document.getElementById('btnHeaderExport').onclick = () => generateAndDownloadFile();
+    document.getElementById('btnExportPrimary').onclick = () => generateAndDownloadFile();
+    const btnDirectExport = document.getElementById('btnDirectExportExcel');
+    if (btnDirectExport) btnDirectExport.onclick = () => generateAndDownloadFile();
+    document.getElementById('btnQuickEditModal').onclick = () => openExportEditModal(state.currentDocIndex);
+
+    // Modal close buttons
+    document.querySelectorAll('.btn-close-modal').forEach(btn => btn.onclick = closeAllModals);
+
+    // Save only in modal
+    document.getElementById('btnSaveModalOnly').onclick = () => {
+      saveModalInputsToState();
+      showToast('Đã lưu thay đổi vào cơ sở dữ liệu!');
+      closeAllModals();
+    };
+
+    // Submit modal -> Export
+    document.getElementById('modalEditForm').onsubmit = e => {
+      e.preventDefault();
+      generateAndDownloadFile();
+    };
+
+    // Confirm all audit
+    document.getElementById('btnConfirmAllAudit').onclick = async () => {
+      const doc = state.documents[state.currentDocIndex];
+      if (doc) {
+        doc.auditDone = true;
+        doc.hasLowConfidence = false;
+        if (doc.id) {
+          try {
+            await fetch(`/api/documents/${doc.id}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeader()
+              },
+              body: JSON.stringify({ audit_done: true, has_low_confidence: false })
+            });
+          } catch (e) {
+            console.error('Audit update error:', e);
+          }
+        }
+        renderWorkspace();
+        showToast('Đã xác nhận kiểm tra và lưu vào cơ sở dữ liệu.');
+      }
+    };
+
+    // Auth Modal
+    const authModal = document.getElementById('authModal');
+    document.getElementById('authBtn').onclick = () => {
+      if (state.isLoggedIn) {
+        state.isLoggedIn = false;
+        state.userEmail = '';
+        localStorage.removeItem('docuflow_token');
+        localStorage.removeItem('docuflow_user');
+        localStorage.removeItem('docuflow_logged_in');
+        document.getElementById('authBtnText').textContent = 'Đăng nhập';
+        showToast('Đã đăng xuất tài khoản.');
+        fetchUserAndDocuments();
+      } else {
+        authModal.classList.remove('hidden');
+        authModal.classList.add('grid');
+      }
+    };
+
+    document.getElementById('btnGoogleAuth').onclick = async () => {
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'demo.google@gmail.com', name: 'Google User' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('docuflow_token', data.access_token);
+          localStorage.setItem('docuflow_user', JSON.stringify(data.user));
+          state.isLoggedIn = true;
+          state.userEmail = data.user.email;
+          state.credits = data.user.credits;
+          document.getElementById('authBtnText').textContent = data.user.full_name || 'demo.google';
+          document.getElementById('creditBalance').textContent = state.credits;
+          showToast('Đăng nhập Google thành công (+20 credit)');
+          closeAllModals();
+          fetchUserAndDocuments();
+        }
+      } catch (e) {
+        showToast('Lỗi kết nối máy chủ.');
+      }
+    };
+
+    document.getElementById('emailLoginForm').onsubmit = async e => {
+      e.preventDefault();
+      const em = document.getElementById('authEmail').value.trim();
+      const pwd = document.getElementById('authPassword') ? document.getElementById('authPassword').value : '123456';
+      try {
+        let res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: em, password: pwd })
+        });
+        if (!res.ok) {
+          res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: em, password: pwd, full_name: em.split('@')[0] })
+          });
+        }
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('docuflow_token', data.access_token);
+          localStorage.setItem('docuflow_user', JSON.stringify(data.user));
+          state.isLoggedIn = true;
+          state.userEmail = data.user.email;
+          state.credits = data.user.credits;
+          document.getElementById('authBtnText').textContent = em.split('@')[0];
+          document.getElementById('creditBalance').textContent = state.credits;
+          showToast('Đăng nhập thành công!');
+          closeAllModals();
+          fetchUserAndDocuments();
+        } else {
+          showToast('Đăng nhập không thành công.');
+        }
+      } catch (err) {
+        showToast('Lỗi kết nối máy chủ.');
+      }
+    };
+
+    document.getElementById('btnForgotPwd').onclick = () => {
+      showToast('Liên kết đặt lại mật khẩu đã được gửi đến email của bạn.');
+    };
+
+    // Pricing Billing cycle toggle
+    const btnMonth = document.getElementById('btnCycleMonth');
+    const btnYear = document.getElementById('btnCycleYear');
+    btnMonth.onclick = () => {
+      btnMonth.className = 'px-4 py-1.5 rounded-full bg-ink text-bgBase transition';
+      btnYear.className = 'px-4 py-1.5 rounded-full text-mute hover:text-ink transition flex items-center gap-1.5';
+      document.getElementById('priceStarter').textContent = '249.000';
+      document.getElementById('priceBusiness').textContent = '449.000';
+    };
+    btnYear.onclick = () => {
+      btnYear.className = 'px-4 py-1.5 rounded-full bg-ink text-bgBase transition flex items-center gap-1.5';
+      btnMonth.className = 'px-4 py-1.5 rounded-full text-mute hover:text-ink transition';
+      document.getElementById('priceStarter').textContent = '2.490.000';
+      document.getElementById('priceBusiness').textContent = '4.490.000';
+    };
+
+    // Pricing plan clicks
+    document.querySelectorAll('.btn-select-plan').forEach(btn => {
+      btn.onclick = () => {
+        showToast(`Đã chọn gói ${btn.dataset.plan}. Chuyển tới cổng thanh toán.`);
+      };
+    });
+
+    // QR Modal
+    const qrModal = document.getElementById('qrPaymentModal');
+    document.getElementById('btnOpenQrModal').onclick = () => {
+      qrModal.classList.remove('hidden');
+      qrModal.classList.add('grid');
+    };
+    document.getElementById('btnSimulatePaymentSuccess').onclick = () => {
+      state.credits += 100;
+      document.getElementById('creditBalance').textContent = state.credits;
+      showToast('Đã nhận thanh toán! Tài khoản được cộng +100 credits.');
+      closeAllModals();
+    };
+  });
+</script>
+</body>
+</html>
